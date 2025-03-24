@@ -4,29 +4,38 @@ import mediapipe as mp
 import numpy as np
 import time
 
-# Load model
-model_dict = pickle.load(open('./model.p', 'rb'))
-model = model_dict['model']
+def get_labels_from_pickle():
+    try:
+        data_dict = pickle.load(open('./data.pickle', 'rb'))
+        labels = list(set(data_dict['labels']))
+        labels_dict = {i: label for i, label in enumerate(labels)}
+        return labels_dict
+    except FileNotFoundError:
+        print("Lỗi: Không tìm thấy tệp data.pickle. Đảm bảo bạn đã tạo tập dữ liệu.")
+        return {}  # Trả về từ điển rỗng nếu không tìm thấy tệp
+
+try:
+    model_dict = pickle.load(open('./model.p', 'rb'))
+    model = model_dict['model']
+except FileNotFoundError:
+    print("Lỗi: Không tìm thấy tệp model.p. Đảm bảo bạn đã huấn luyện mô hình.")
+    exit()
 
 cap = cv2.VideoCapture(0)
 
-# Initialize MediaPipe Hand and Drawing modules
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 hands = mp_hands.Hands(static_image_mode=True, min_detection_confidence=0.3)
 
-# Labels dictionary
-labels_dict = {0: 'none', 1: 'B', 2: 'C', 3: 'D', 4: 'E', 5: 'F', 
-               6: 'G', 7: 'A', 8: 'H', 9: 'I', 10: 'K', 11: 'L', 
-               12: 'O', 13: 'F**k', 14: 'OK', 15: 'Hi', 16: '+1 respect',
-               17: '+1 respect'}
+labels_dict = get_labels_from_pickle()
 predicted_character = ""
-word = ""  # Variable to concatenate characters
-last_added_time = time.time()  # Track the time of the last addition
+word = ""
+last_added_time = time.time()
+previous_predictions = []  # Bộ lọc dự đoán
 
 def process_frame():
-    global predicted_character, word, last_added_time
+    global predicted_character, word, last_added_time, previous_predictions
     data_aux = []
     x_ = []
     y_ = []
@@ -34,16 +43,15 @@ def process_frame():
     ret, frame = cap.read()
 
     if not ret or frame is None:
-        print("Cannot read from camera. Check camera connection.")
+        print("Không thể đọc từ camera. Kiểm tra kết nối camera.")
         return None, None
 
     H, W, _ = frame.shape
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = hands.process(frame_rgb)
 
-    # Check for multiple hands and select the first one
     if results.multi_hand_landmarks:
-        hand_landmarks = results.multi_hand_landmarks[0]  # Only take the first detected hand
+        hand_landmarks = results.multi_hand_landmarks[0]
 
         mp_drawing.draw_landmarks(
             frame,
@@ -71,23 +79,31 @@ def process_frame():
         x2 = int(max(x_) * W) - 10
         y2 = int(max(y_) * H) - 10
 
-        # Predict character
         prediction = model.predict([np.asarray(data_aux)])
-        predicted_character = labels_dict[int(prediction[0])]
-        
-        # Append character to word if different from the last character
-        if (predicted_character != "none" and 
-            (not word or predicted_character != word[-1]) and 
-            (time.time() - last_added_time) >= 2):  # Check if 2 seconds have passed
-            word += predicted_character
-            last_added_time = time.time()  # Update the time
 
-        # Draw bounding box and predicted character
+        # Kiểm tra kiểu dữ liệu của prediction[0]
+        if isinstance(prediction[0], str):
+            predicted_character = prediction[0]
+        else:
+            predicted_character = labels_dict.get(int(prediction[0]), "unknown")
+
+        previous_predictions.append(predicted_character)
+        if len(previous_predictions) > 5:
+            previous_predictions.pop(0)
+
+        predicted_character = max(set(previous_predictions), key=previous_predictions.count)
+
+        if (predicted_character != "none" and
+            (not word or predicted_character != word[-1]) and
+            (time.time() - last_added_time) >= 2):
+            word += predicted_character
+            last_added_time = time.time()
+
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 0), 4)
         cv2.putText(frame, predicted_character, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 0, 0), 3, cv2.LINE_AA)
-    
+
     else:
-        predicted_character = "none"  # Set as "none" if no hand is detected
+        predicted_character = "none"
 
     return frame, word
 
@@ -103,12 +119,11 @@ def main():
 
         cv2.imshow('frame', frame)
 
-        # Press 'q' to exit, 'c' to clear the word
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
         elif key == ord('c'):
-            word = ""  # Clear the word
+            word = ""
 
     release_resources()
 

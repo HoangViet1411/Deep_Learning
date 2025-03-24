@@ -6,6 +6,7 @@ import main
 import collect_imgs
 import create_dataset
 import train_classifier
+import threading
 
 class HandSignApp:
     def __init__(self, root):
@@ -63,6 +64,8 @@ class HandSignApp:
         collect_img_button.pack(pady=10)
         stop_collect_img_button = ttk.Button(collect_img_tab, text="Stop", command=self.stop_collect_img)
         stop_collect_img_button.pack(pady=10)
+        self.folder_entry = ttk.Entry(collect_img_tab)
+        self.folder_entry.pack(pady=10)
 
     def create_create_dataset_tab(self):
         create_dataset_tab = ttk.Frame(self.notebook)
@@ -120,9 +123,14 @@ class HandSignApp:
         cv2.destroyAllWindows()
 
     def run_collect_img(self):
+        folder_name = self.folder_entry.get()  # Lấy tên thư mục từ entry
+        if not folder_name:
+            tk.messagebox.showerror("Lỗi", "Vui lòng nhập tên thư mục.")
+            return
+
         self.running = True
-        collect_imgs.cap = cv2.VideoCapture(0) 
-        self.update_collect_img_frame()
+        collect_imgs.cap = cv2.VideoCapture(0)
+        threading.Thread(target=lambda: collect_imgs.collect_images(folder_name)).start() #thay đổi để nhận tham số folder name
 
     def stop_collect_img(self):
         self.running = False
@@ -143,6 +151,7 @@ class HandSignApp:
             self.canvas.imgtk = imgtk
 
         self.root.after(10, self.update_main_frame)
+        main.labels_dict = main.get_labels_from_pickle() #cập nhật label từ file pickle.
 
     def update_collect_img_frame(self):
         if not self.running:
@@ -167,14 +176,14 @@ class HandSignApp:
     def on_key_press(self, event):
         if event.char == 'c':
             self.text_area.delete("1.0", tk.END)
-            main.word = ""  # Clear the word in the main logic
+            main.word = ""
         elif event.keysym == 'BackSpace':
             current_text = self.text_area.get("1.0", tk.END).strip()
-        if current_text:
-            new_text = current_text[:-1]
-            self.text_area.delete("1.0", tk.END)
-            self.text_area.insert(tk.END, new_text)
-            main.word = new_text  # Update the word in the main logic
+            if current_text:
+                new_text = current_text[:-1]
+                self.text_area.delete("1.0", tk.END)
+                self.text_area.insert(tk.END, new_text)
+                main.word = new_text
 
 
     def on_closing(self):
