@@ -193,7 +193,7 @@ class HandSignApp:
     def show_guide(self):
         guide_window = tk.Toplevel(self.root)
         guide_window.title("Hướng dẫn sử dụng")
-        guide_label = ttk.Label(guide_window, text="Hướng dẫn sử dụng ứng dụng...", font=("Helvetica", 12))
+        guide_label = ttk.Label(guide_window, text="Hướng dẫn sử dụng ứng dụng ấn q để chụp và c hoặc backspace để xóa chữ khi dùng model", font=("Helvetica", 12))
         guide_label.pack(padx=20, pady=20)
 
     def show_about(self):
